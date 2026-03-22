@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using Scop.Math;
+using Scop.Parsing.Interfaces;
+using Scop.Parsing.Triangulation;
+using Scop.Parsing.UvMapping;
+using Scop.Utils;
 
 namespace Scop.Parsing
 {
@@ -41,14 +44,20 @@ namespace Scop.Parsing
 
         /* ── Public entry point ──────────────────────────────────────────── */
 
-        public static ObjMesh Parse(string filepath)
+        public static ObjMesh Parse(
+            string         filepath,
+            ITriangulator? triangulator = null,
+            IUvMapper?     uvMapper     = null)
         {
             ObjMesh mesh = new ObjMesh();
 
-            if (!ValidateFile(filepath))
+            if (!FileValidator.Validate(filepath, "ObjParser"))
             {
                 return mesh;
             }
+
+            if (triangulator == null) { triangulator = new FanTriangulator(); }
+            if (uvMapper == null)     { uvMapper     = new BoxUvMapper(); }
 
             List<Vec3> positions = new List<Vec3>();
             List<Vec2> uvs       = new List<Vec2>();
@@ -65,10 +74,10 @@ namespace Scop.Parsing
                 return mesh;
             }
 
-            Vec3 centroid              = ComputeCentroid(positions);
-            (Vec3 minB, Vec3 maxB)     = ComputeBounds(positions, centroid);
+            Vec3 centroid          = ComputeCentroid(positions);
+            (Vec3 minB, Vec3 maxB) = ComputeBounds(positions, centroid);
 
-            BakeVertices(mesh, triangles, positions, uvs, centroid, minB, maxB);
+            BakeVertices(mesh, triangles, positions, uvs, centroid, minB, maxB, uvMapper);
 
             Console.WriteLine(
                 $"ObjParser: {mesh.Vertices.Count} vertices, " +
@@ -76,34 +85,6 @@ namespace Scop.Parsing
             );
 
             return mesh;
-        }
-
-        /* ── File validation ─────────────────────────────────────────────── */
-
-        private static bool ValidateFile(string filepath)
-        {
-            if (!File.Exists(filepath))
-            {
-                Console.Error.WriteLine($"ObjParser: file not found '{filepath}'");
-                return false;
-            }
-
-            try
-            {
-                using FileStream fs = File.Open(filepath, FileMode.Open, FileAccess.Read);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                Console.Error.WriteLine($"ObjParser: no read permission for '{filepath}'");
-                return false;
-            }
-            catch (IOException ex)
-            {
-                Console.Error.WriteLine($"ObjParser: cannot open '{filepath}': {ex.Message}");
-                return false;
-            }
-
-            return true;
         }
 
         /* ── Pass 1: read lines ──────────────────────────────────────────── */
@@ -119,7 +100,7 @@ namespace Scop.Parsing
 
             foreach (string rawLine in File.ReadLines(filepath))
             {
-                string[] tokens = TokenizeLine(rawLine);
+                string[] tokens = FileParser.TokenizeLine(rawLine);
 
                 if (tokens.Length == 0)
                 {
@@ -192,14 +173,15 @@ namespace Scop.Parsing
             List<Vec2>                                            uvs,
             Vec3                                                  centroid,
             Vec3                                                  minB,
-            Vec3                                                  maxB)
+            Vec3                                                  maxB,
+            IUvMapper                                             uvMapper)
         {
             int posCount = positions.Count;
             int uvCount  = uvs.Count;
 
             foreach (var (a, b, c, faceIdx) in triangles)
             {
-                Vec3     color = GrayPalette[Math.Abs(faceIdx) % GrayPalette.Length];
+                Vec3     color = GrayPalette[System.Math.Abs(faceIdx) % GrayPalette.Length];
                 FaceIdx[] fi   = { a, b, c };
 
                 foreach (FaceIdx f in fi)
@@ -213,7 +195,7 @@ namespace Scop.Parsing
                     }
 
                     Vec3 pos = positions[vi - 1] - centroid;
-                    Vec2 uv  = ResolveUV(f, uvs, uvCount, pos, minB, maxB);
+                    Vec2 uv  = ResolveUV(f, uvs, uvCount, pos, Vec3.Zero, minB, maxB, uvMapper);
 
                     uint idx = (uint)mesh.Vertices.Count;
                     mesh.Vertices.Add(new Vertex(pos, color, uv));
@@ -224,37 +206,26 @@ namespace Scop.Parsing
 
         /* ── Line parsing helpers ────────────────────────────────────────── */
 
-        private static string[] TokenizeLine(string rawLine)
-        {
-            int    commentAt = rawLine.IndexOf('#');
-            string line      = commentAt >= 0 ? rawLine[..commentAt] : rawLine;
-
-            return line.Trim().Split(
-                new char[] { ' ', '\t' },
-                StringSplitOptions.RemoveEmptyEntries
-            );
-        }
-
         private static void ParsePosition(string[] tokens, List<Vec3> positions)
         {
-            float x = ParseFloat(tokens[1]);
-            float y = ParseFloat(tokens[2]);
-            float z = ParseFloat(tokens[3]);
+            float x = FileParser.ParseFloat(tokens[1]);
+            float y = FileParser.ParseFloat(tokens[2]);
+            float z = FileParser.ParseFloat(tokens[3]);
             positions.Add(new Vec3(x, y, z));
         }
 
         private static void ParseTexCoord(string[] tokens, List<Vec2> uvs)
         {
-            float u = ParseFloat(tokens[1]);
-            float v = ParseFloat(tokens[2]);
+            float u = FileParser.ParseFloat(tokens[1]);
+            float v = FileParser.ParseFloat(tokens[2]);
             uvs.Add(new Vec2(u, v));
         }
 
         private static void ParseNormal(string[] tokens, List<Vec3> normals)
         {
-            float x = ParseFloat(tokens[1]);
-            float y = ParseFloat(tokens[2]);
-            float z = ParseFloat(tokens[3]);
+            float x = FileParser.ParseFloat(tokens[1]);
+            float y = FileParser.ParseFloat(tokens[2]);
+            float z = FileParser.ParseFloat(tokens[3]);
             normals.Add(new Vec3(x, y, z));
         }
 
@@ -311,8 +282,10 @@ namespace Scop.Parsing
             List<Vec2> uvs,
             int        uvCount,
             Vec3       pos,
+            Vec3       faceNormal,
             Vec3       minB,
-            Vec3       maxB)
+            Vec3       maxB,
+            IUvMapper  uvMapper)
         {
             if (f.Vt != 0)
             {
@@ -324,7 +297,7 @@ namespace Scop.Parsing
                 }
             }
 
-            return BoxUV(pos, minB, maxB);
+            return uvMapper.Map(pos, faceNormal, minB, maxB);
         }
 
         /* ── Math helpers ────────────────────────────────────────────────── */
@@ -334,20 +307,5 @@ namespace Scop.Parsing
         {
             return raw < 0 ? count + raw + 1 : raw;
         }
-
-        // Generate UV from centered position using XY plane projection
-        private static Vec2 BoxUV(Vec3 pos, Vec3 minB, Vec3 maxB)
-        {
-            Vec3  range = maxB - minB;
-            float u     = range.X > 1e-6f ? (pos.X - minB.X) / range.X : 0f;
-            float v     = range.Y > 1e-6f ? (pos.Y - minB.Y) / range.Y : 0f;
-            return new Vec2(u, v);
-        }
-
-        // Always parse floats with dot as decimal separator
-        private static float ParseFloat(string s)
-        {
-            return float.Parse(s, CultureInfo.InvariantCulture);
-        }
     }
-}WWWWWWWWWWWWWW
+}
