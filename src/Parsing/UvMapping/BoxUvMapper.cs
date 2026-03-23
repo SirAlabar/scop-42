@@ -16,7 +16,7 @@ namespace Scop.Parsing.UvMapping
         {
             Vec3  range = maxBound - minBound;
             float u     = range.X > 1e-6f ? (position.X - minBound.X) / range.X : 0f;
-            float v     = range.Y > 1e-6f ? (position.Y - minBound.Y) / range.Y : 0f;
+            float v     = range.Y > 1e-6f ? 1.0f - (position.Y - minBound.Y) / range.Y : 0f;
             return new Vec2(u, v);
         }
     }
