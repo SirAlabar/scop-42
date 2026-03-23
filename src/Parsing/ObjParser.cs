@@ -74,14 +74,21 @@ namespace Scop.Parsing
                 return mesh;
             }
 
-            Vec3 centroid          = ComputeCentroid(positions);
+            Vec3  centroid         = ComputeCentroid(positions);
             (Vec3 minB, Vec3 maxB) = ComputeBounds(positions, centroid);
+            float scale            = ComputeScale(minB, maxB);
 
-            BakeVertices(mesh, triangles, positions, uvs, centroid, minB, maxB, uvMapper);
+            /* ── Scale bounds for UV mapper ───────────────────────────────── */
+
+            Vec3 scaledMinB = minB / scale;
+            Vec3 scaledMaxB = maxB / scale;
+
+            BakeVertices(mesh, triangles, positions, uvs, centroid, scale, scaledMinB, scaledMaxB, uvMapper);
 
             Console.WriteLine(
                 $"ObjParser: {mesh.Vertices.Count} vertices, " +
-                $"{mesh.Indices.Count / 3} triangles from '{filepath}'"
+                $"{mesh.Indices.Count / 3} triangles from '{filepath}' " +
+                $"(scale = {scale:F4})"
             );
 
             return mesh;
@@ -128,7 +135,7 @@ namespace Scop.Parsing
             }
         }
 
-        /* ── Pass 2: centroid and bounds ─────────────────────────────────── */
+        /* ── Pass 2: centroid, bounds, scale ─────────────────────────────── */
 
         private static Vec3 ComputeCentroid(List<Vec3> positions)
         {
@@ -164,6 +171,19 @@ namespace Scop.Parsing
             return (minB, maxB);
         }
 
+        // Bonus 3 — compute uniform scale so largest axis fits in [-1, +1] (2 units total).
+        // A floor of 1e-6 guards against degenerate zero-size meshes.
+        private static float ComputeScale(Vec3 minB, Vec3 maxB)
+        {
+            float extentX = maxB.X - minB.X;
+            float extentY = maxB.Y - minB.Y;
+            float extentZ = maxB.Z - minB.Z;
+
+            float maxExtent = MathF.Max(extentX, MathF.Max(extentY, extentZ));
+
+            return MathF.Max(maxExtent / 2f, 1e-6f);
+        }
+
         /* ── Pass 3: bake into Vertex / index arrays ─────────────────────── */
 
         private static void BakeVertices(
@@ -172,6 +192,7 @@ namespace Scop.Parsing
             List<Vec3>                                            positions,
             List<Vec2>                                            uvs,
             Vec3                                                  centroid,
+            float                                                 scale,
             Vec3                                                  minB,
             Vec3                                                  maxB,
             IUvMapper                                             uvMapper)
@@ -194,7 +215,9 @@ namespace Scop.Parsing
                         continue;
                     }
 
-                    Vec3 pos = positions[vi - 1] - centroid;
+                    /* ── Center then scale to 2-unit bounding box ─────────── */
+
+                    Vec3 pos = (positions[vi - 1] - centroid) / scale;
                     Vec2 uv  = ResolveUV(f, uvs, uvCount, pos, Vec3.Zero, minB, maxB, uvMapper);
 
                     uint idx = (uint)mesh.Vertices.Count;

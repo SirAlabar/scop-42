@@ -37,5 +37,9 @@ namespace Scop
         /* ── Bonus 1 — Wireframe ─────────────────────────────────────────── */
 
         public bool     WireframeOn = false;
+
+        /* ── Bonus 2 — Backface culling ──────────────────────────────────── */
+
+        public bool     CullingOn   = false;
     }
 }

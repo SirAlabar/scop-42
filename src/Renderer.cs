@@ -43,6 +43,14 @@ namespace Scop
             state.Shader.SetFloat("u_blendFactor", blend);
             state.Shader.SetInt("u_texture",        0);
 
+            /* ── Backface culling — enabled only when toggled on ─────────── */
+
+            if (state.CullingOn)
+            {
+                GL.Enable(EnableCap.CullFace);
+                GL.CullFace(CullFaceMode.Back);
+            }
+
             /* ── Wireframe — set polygon mode, draw, restore ─────────────── */
 
             if (state.WireframeOn)
@@ -57,6 +65,11 @@ namespace Scop
             if (state.WireframeOn)
             {
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+            }
+
+            if (state.CullingOn)
+            {
+                GL.Disable(EnableCap.CullFace);
             }
         }
 
