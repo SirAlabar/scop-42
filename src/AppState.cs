@@ -21,7 +21,7 @@ namespace Scop
         public float    RotAngle    = 0f;
         public float    CameraZ     = 5.0f;
 
-        /* ── Manual rotation (bonus 4) ───────────────────────────────────── */
+        /* ── Manual rotation ─────────────────────────────────────────────── */
 
         public float    ManualRotX  = 0f;
         public float    ManualRotY  = 0f;
@@ -33,5 +33,9 @@ namespace Scop
         public float    BlendFactor = 0f;
         public float    BlendTarget = 0f;
         public bool     TextureOn   = false;
+
+        /* ── Bonus 1 — Wireframe ─────────────────────────────────────────── */
+
+        public bool     WireframeOn = false;
     }
 }

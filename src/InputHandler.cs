@@ -23,8 +23,8 @@ namespace Scop
 
         public static void Update(AppState state, KeyboardState keyboard, float dt)
         {
-            HandleQuit(state, keyboard);
             HandleTextureToggle(state, keyboard);
+            HandleWireframeToggle(state, keyboard);
             HandleTranslation(state, keyboard);
             UpdateRotation(state, dt);
             UpdateBlend(state, dt);
@@ -67,18 +67,20 @@ namespace Scop
 
         /* ── Private helpers ─────────────────────────────────────────────── */
 
-        private static void HandleQuit(AppState state, KeyboardState keyboard)
-        {
-            // Quit signal is read by App.cs via KeyboardState directly
-            // Nothing to mutate here — App checks Escape itself in OnUpdateFrame
-        }
-
         private static void HandleTextureToggle(AppState state, KeyboardState keyboard)
         {
             if (keyboard.IsKeyPressed(Keys.T))
             {
                 state.TextureOn   = !state.TextureOn;
                 state.BlendTarget = state.TextureOn ? 1.0f : 0.0f;
+            }
+        }
+
+        private static void HandleWireframeToggle(AppState state, KeyboardState keyboard)
+        {
+            if (keyboard.IsKeyPressed(Keys.W))
+            {
+                state.WireframeOn = !state.WireframeOn;
             }
         }
 

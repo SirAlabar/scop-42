@@ -33,15 +33,31 @@ namespace Scop
             Mat4 view  = BuildView(state);
             Mat4 proj  = BuildProjection(viewportWidth, viewportHeight);
 
+            /* ── Blend — forced to 0 in wireframe mode for clean lines ──── */
+
+            float blend = state.WireframeOn ? 0f : state.BlendFactor;
+
             state.Shader.SetMat4("u_model",        model);
             state.Shader.SetMat4("u_view",         view);
             state.Shader.SetMat4("u_projection",   proj);
-            state.Shader.SetFloat("u_blendFactor", state.BlendFactor);
+            state.Shader.SetFloat("u_blendFactor", blend);
             state.Shader.SetInt("u_texture",        0);
+
+            /* ── Wireframe — set polygon mode, draw, restore ─────────────── */
+
+            if (state.WireframeOn)
+            {
+                GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
+            }
 
             state.Texture.Bind(0);
             state.Mesh.Draw();
             state.Texture.Unbind();
+
+            if (state.WireframeOn)
+            {
+                GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+            }
         }
 
         /* ── Matrix builders ─────────────────────────────────────────────── */
