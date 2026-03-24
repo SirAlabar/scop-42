@@ -89,6 +89,16 @@ namespace Scop
 
             Renderer.Draw(_state, Size.X, Size.Y);
 
+            /* ── Bonus 4 — screenshot captured before swap ───────────────── */
+
+            if (_state.ScreenshotRequested)
+            {
+                // Use FramebufferSize — matches the actual GL pixel buffer,
+                // not the window client area which may differ on some WMs.
+                Screenshot.Capture(FramebufferSize.X, FramebufferSize.Y);
+                _state.ScreenshotRequested = false;
+            }
+
             SwapBuffers();
         }
 

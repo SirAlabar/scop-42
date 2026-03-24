@@ -41,5 +41,9 @@ namespace Scop
         /* ── Bonus 2 — Backface culling ──────────────────────────────────── */
 
         public bool     CullingOn   = false;
+
+        /* ── Bonus 4 — Screenshot ────────────────────────────────────────── */
+
+        public bool     ScreenshotRequested = false;
     }
 }

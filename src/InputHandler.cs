@@ -26,6 +26,7 @@ namespace Scop
             HandleTextureToggle(state, keyboard);
             HandleWireframeToggle(state, keyboard);
             HandleCullingToggle(state, keyboard);
+            HandleScreenshotRequest(state, keyboard);
             HandleTranslation(state, keyboard);
             UpdateRotation(state, dt);
             UpdateBlend(state, dt);
@@ -90,6 +91,14 @@ namespace Scop
             if (keyboard.IsKeyPressed(Keys.C))
             {
                 state.CullingOn = !state.CullingOn;
+            }
+        }
+
+        private static void HandleScreenshotRequest(AppState state, KeyboardState keyboard)
+        {
+            if (keyboard.IsKeyPressed(Keys.P))
+            {
+                state.ScreenshotRequested = true;
             }
         }
 
