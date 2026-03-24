@@ -11,9 +11,10 @@ namespace Scop
     {
         /* ── Assets ──────────────────────────────────────────────────────── */
 
-        public Shader   Shader  = null!;
-        public Mesh     Mesh    = null!;
-        public ITexture Texture = null!;
+        public Shader      Shader      = null!;
+        public Mesh        Mesh        = null!;
+        public ITexture    Texture     = null!;
+        public LightSphere LightSphere = null!;
 
         /* ── Transform ───────────────────────────────────────────────────── */
 
@@ -21,11 +22,11 @@ namespace Scop
         public float    RotAngle    = 0f;
         public float    CameraZ     = 5.0f;
 
-        /* ── Manual rotation ─────────────────────────────────────────────── */
+        /* ── Manual rotation (LMB drag) ──────────────────────────────────── */
 
-        public float    ManualRotX  = 0f;
-        public float    ManualRotY  = 0f;
-        public bool     IsDragging  = false;
+        public float    ManualRotX   = 0f;
+        public float    ManualRotY   = 0f;
+        public bool     IsDragging   = false;
         public Vec2     MouseLastPos;
 
         /* ── Texture blend ───────────────────────────────────────────────── */
@@ -45,5 +46,24 @@ namespace Scop
         /* ── Bonus 4 — Screenshot ────────────────────────────────────────── */
 
         public bool     ScreenshotRequested = false;
+
+        /* ── Bonus 5 — Flat shading (true = flat, false = smooth) ────────── */
+
+        public bool     FlatShading = true;
+
+        /* ── Bonus 6 — Phong lighting ────────────────────────────────────── */
+
+        public bool     LightOn         = true;
+
+        // Initial position is within frustum bounds at Z=3, CameraZ=5:
+        // depth=2, halfY=2*tan(PI/8)=0.83, halfX=halfY*(16/9)=1.47
+        public Vec3     LightPos        = new Vec3(0.5f, 0.5f, 3f);
+        public Vec3     LightColor      = Vec3.One;
+        public float    AmbientStrength = 0.15f;
+        public float    Shininess       = 32f;
+
+        /* ── Bonus 6 — RMB drag (move light) ────────────────────────────── */
+
+        public bool     IsRmbDragging  = false;
     }
 }

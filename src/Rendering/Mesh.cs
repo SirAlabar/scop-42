@@ -18,10 +18,11 @@ namespace Scop.Rendering
 
         // Packs ObjMesh into interleaved float array and uploads to GPU.
         //
-        // Vertex layout (stride = 32 bytes):
+        // Vertex layout (stride = 44 bytes):
         //   offset  0  →  location 0  →  Position  (3 floats = 12 bytes)
         //   offset 12  →  location 1  →  Color     (3 floats = 12 bytes)
         //   offset 24  →  location 2  →  TexCoord  (2 floats =  8 bytes)
+        //   offset 32  →  location 3  →  Normal    (3 floats = 12 bytes)
 
         public void Upload(ObjMesh data)
         {
@@ -71,6 +72,10 @@ namespace Scop.Rendering
             GL.EnableVertexAttribArray(2);
             GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, stride, 24);
 
+            // location 3 — normal
+            GL.EnableVertexAttribArray(3);
+            GL.VertexAttribPointer(3, 3, VertexAttribPointerType.Float, false, stride, 32);
+
             GL.BindVertexArray(0);
         }
 
@@ -90,24 +95,28 @@ namespace Scop.Rendering
 
         /* ── Private helpers ─────────────────────────────────────────────── */
 
-        // Converts List<Vertex> into a flat float[] for GL.BufferData
+        // Converts List<Vertex> into a flat float[] for GL.BufferData.
+        // 11 floats per vertex: position(3) + color(3) + texCoord(2) + normal(3)
         private static float[] PackVertices(ObjMesh data)
         {
-            float[] packed = new float[data.Vertices.Count * 8];
+            float[] packed = new float[data.Vertices.Count * 11];
 
             for (int i = 0; i < data.Vertices.Count; i++)
             {
                 Vertex v     = data.Vertices[i];
-                int    start = i * 8;
+                int    start = i * 11;
 
-                packed[start + 0] = v.Position.X;
-                packed[start + 1] = v.Position.Y;
-                packed[start + 2] = v.Position.Z;
-                packed[start + 3] = v.Color.X;
-                packed[start + 4] = v.Color.Y;
-                packed[start + 5] = v.Color.Z;
-                packed[start + 6] = v.TexCoord.X;
-                packed[start + 7] = v.TexCoord.Y;
+                packed[start + 0]  = v.Position.X;
+                packed[start + 1]  = v.Position.Y;
+                packed[start + 2]  = v.Position.Z;
+                packed[start + 3]  = v.Color.X;
+                packed[start + 4]  = v.Color.Y;
+                packed[start + 5]  = v.Color.Z;
+                packed[start + 6]  = v.TexCoord.X;
+                packed[start + 7]  = v.TexCoord.Y;
+                packed[start + 8]  = v.Normal.X;
+                packed[start + 9]  = v.Normal.Y;
+                packed[start + 10] = v.Normal.Z;
             }
 
             return packed;

@@ -3,6 +3,7 @@ using OpenTK.Graphics.OpenGL4;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using Scop.Math;
 using Scop.Parsing;
 using Scop.Parsing.Triangulation;
 using Scop.Parsing.UvMapping;
@@ -64,6 +65,7 @@ namespace Scop
             LoadShader();
             LoadMesh();
             LoadTexture();
+            LoadLightSphere();
         }
 
         /* ── OnUpdateFrame ───────────────────────────────────────────────── */
@@ -93,8 +95,6 @@ namespace Scop
 
             if (_state.ScreenshotRequested)
             {
-                // Use FramebufferSize — matches the actual GL pixel buffer,
-                // not the window client area which may differ on some WMs.
                 Screenshot.Capture(FramebufferSize.X, FramebufferSize.Y);
                 _state.ScreenshotRequested = false;
             }
@@ -120,12 +120,17 @@ namespace Scop
             {
                 InputHandler.OnMouseDown(_state, MousePosition.X, MousePosition.Y);
             }
+            else if (e.Button == MouseButton.Right)
+            {
+                InputHandler.OnRmbDown(_state);
+            }
         }
 
         protected override void OnMouseMove(MouseMoveEventArgs e)
         {
             base.OnMouseMove(e);
             InputHandler.OnMouseMove(_state, e.X, e.Y);
+            InputHandler.OnRmbMove(_state, e.X, e.Y, Size.X, Size.Y);
         }
 
         protected override void OnMouseUp(MouseButtonEventArgs e)
@@ -136,12 +141,18 @@ namespace Scop
             {
                 InputHandler.OnMouseUp(_state);
             }
+            else if (e.Button == MouseButton.Right)
+            {
+                InputHandler.OnRmbUp(_state);
+            }
         }
 
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
             base.OnMouseWheel(e);
-            InputHandler.OnMouseWheel(_state, e.OffsetY);
+
+            bool rmbHeld = MouseState.IsButtonDown(MouseButton.Right);
+            InputHandler.OnMouseWheel(_state, e.OffsetY, rmbHeld);
         }
 
         /* ── OnUnload ────────────────────────────────────────────────────── */
@@ -152,6 +163,7 @@ namespace Scop
 
             _state.Mesh?.Dispose();
             _state.Shader?.Dispose();
+            _state.LightSphere?.Dispose();
 
             if (_state.Texture is IDisposable disposable)
             {
@@ -196,6 +208,12 @@ namespace Scop
             {
                 Console.WriteLine("App: texture unavailable — colour-only mode");
             }
+        }
+
+        private void LoadLightSphere()
+        {
+            _state.LightSphere = new LightSphere();
+            _state.LightSphere.Upload(_state.LightColor);
         }
     }
 }

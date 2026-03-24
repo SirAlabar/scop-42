@@ -83,7 +83,16 @@ namespace Scop.Parsing
             Vec3 scaledMinB = minB / scale;
             Vec3 scaledMaxB = maxB / scale;
 
-            BakeVertices(mesh, triangles, positions, uvs, centroid, scale, scaledMinB, scaledMaxB, uvMapper);
+            /* ── Bonus 5 — pre-compute smooth normals per position index ─── */
+
+            Dictionary<int, Vec3> smoothNormals =
+                ComputeSmoothNormals(triangles, positions, centroid, scale);
+
+            BakeVertices(
+                mesh, triangles, positions, uvs,
+                centroid, scale, scaledMinB, scaledMaxB,
+                smoothNormals, uvMapper
+            );
 
             Console.WriteLine(
                 $"ObjParser: {mesh.Vertices.Count} vertices, " +
@@ -171,8 +180,7 @@ namespace Scop.Parsing
             return (minB, maxB);
         }
 
-        // Bonus 3 — compute uniform scale so largest axis fits in [-1, +1] (2 units total).
-        // A floor of 1e-6 guards against degenerate zero-size meshes.
+        // Bonus 3 — compute uniform scale so largest axis fits in [-1, +1].
         private static float ComputeScale(Vec3 minB, Vec3 maxB)
         {
             float extentX = maxB.X - minB.X;
@@ -182,6 +190,74 @@ namespace Scop.Parsing
             float maxExtent = MathF.Max(extentX, MathF.Max(extentY, extentZ));
 
             return MathF.Max(maxExtent / 2f, 1e-6f);
+        }
+
+        /* ── Bonus 5 — smooth normal pre-pass ────────────────────────────── */
+
+        // For each position index accumulate face normals of all triangles
+        // that share it, then normalize — gives smooth (Gouraud) normals.
+        // Degenerate triangles (zero cross product) are silently skipped.
+
+        private static Dictionary<int, Vec3> ComputeSmoothNormals(
+            List<(FaceIdx a, FaceIdx b, FaceIdx c, int faceIdx)> triangles,
+            List<Vec3>                                            positions,
+            Vec3                                                  centroid,
+            float                                                 scale)
+        {
+            int posCount = positions.Count;
+
+            Dictionary<int, Vec3> accumulated = new Dictionary<int, Vec3>();
+
+            foreach (var (a, b, c, _) in triangles)
+            {
+                int viA = Resolve(a.V, posCount);
+                int viB = Resolve(b.V, posCount);
+                int viC = Resolve(c.V, posCount);
+
+                if (viA < 1 || viA > posCount) { continue; }
+                if (viB < 1 || viB > posCount) { continue; }
+                if (viC < 1 || viC > posCount) { continue; }
+
+                Vec3 pA = (positions[viA - 1] - centroid) / scale;
+                Vec3 pB = (positions[viB - 1] - centroid) / scale;
+                Vec3 pC = (positions[viC - 1] - centroid) / scale;
+
+                Vec3 faceNormal = Vec3.Cross(pB - pA, pC - pA).Normalized();
+
+                /* ── Skip degenerate triangle ─────────────────────────────── */
+
+                if (float.IsNaN(faceNormal.X))
+                {
+                    continue;
+                }
+
+                AccumulateNormal(accumulated, viA, faceNormal);
+                AccumulateNormal(accumulated, viB, faceNormal);
+                AccumulateNormal(accumulated, viC, faceNormal);
+            }
+
+            /* ── Normalize accumulated normals ────────────────────────────── */
+
+            Dictionary<int, Vec3> result = new Dictionary<int, Vec3>();
+
+            foreach (KeyValuePair<int, Vec3> kvp in accumulated)
+            {
+                result[kvp.Key] = kvp.Value.Normalized();
+            }
+
+            return result;
+        }
+
+        private static void AccumulateNormal(Dictionary<int, Vec3> map, int vi, Vec3 normal)
+        {
+            if (map.TryGetValue(vi, out Vec3 existing))
+            {
+                map[vi] = existing + normal;
+            }
+            else
+            {
+                map[vi] = normal;
+            }
         }
 
         /* ── Pass 3: bake into Vertex / index arrays ─────────────────────── */
@@ -195,6 +271,7 @@ namespace Scop.Parsing
             float                                                 scale,
             Vec3                                                  minB,
             Vec3                                                  maxB,
+            Dictionary<int, Vec3>                                 smoothNormals,
             IUvMapper                                             uvMapper)
         {
             int posCount = positions.Count;
@@ -215,13 +292,12 @@ namespace Scop.Parsing
                         continue;
                     }
 
-                    /* ── Center then scale to 2-unit bounding box ─────────── */
-
-                    Vec3 pos = (positions[vi - 1] - centroid) / scale;
-                    Vec2 uv  = ResolveUV(f, uvs, uvCount, pos, Vec3.Zero, minB, maxB, uvMapper);
+                    Vec3 pos    = (positions[vi - 1] - centroid) / scale;
+                    Vec2 uv     = ResolveUV(f, uvs, uvCount, pos, Vec3.Zero, minB, maxB, uvMapper);
+                    Vec3 normal = smoothNormals.TryGetValue(vi, out Vec3 n) ? n : Vec3.UnitY;
 
                     uint idx = (uint)mesh.Vertices.Count;
-                    mesh.Vertices.Add(new Vertex(pos, color, uv));
+                    mesh.Vertices.Add(new Vertex(pos, color, uv, normal));
                     mesh.Indices.Add(idx);
                 }
             }
