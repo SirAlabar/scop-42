@@ -5,6 +5,7 @@ using Scop.Math;
 namespace Scop
 {
     // Reads keyboard and mouse state, mutates AppState.
+    // All per-model input is routed to the active ModelState.
     // No OpenGL calls. No rendering logic.
 
     public static class InputHandler
@@ -21,54 +22,71 @@ namespace Scop
         private const float RotSpeed    = 1.0f;     // rad/s
 
         // Matches Renderer constants
-        private const float FovY        = MathF.PI / 4f;
-        private const float Aspect      = 16f / 9f;
+        private const float FovY   = MathF.PI / 4f;
+        private const float Aspect = 16f / 9f;
 
         /* ── Per-frame update ────────────────────────────────────────────── */
 
-        public static void Update(AppState state, KeyboardState keyboard, float dt)
+        // Returns true if the active model was switched this frame.
+        public static bool Update(AppState state, KeyboardState keyboard, float dt)
         {
-            HandleTextureToggle(state, keyboard);
-            HandleWireframeToggle(state, keyboard);
-            HandleCullingToggle(state, keyboard);
+            ModelState active = state.Models[state.ActiveModel];
+
+            bool switched = HandleModelSwitch(state, keyboard);
+
+            HandleTextureToggle(active, keyboard);
+            HandleWireframeToggle(active, keyboard);
+            HandleCullingToggle(active, keyboard);
             HandleScreenshotRequest(state, keyboard);
-            HandleShadingToggle(state, keyboard);
-            HandleLightToggle(state, keyboard);
-            HandleTranslation(state, keyboard);
-            UpdateRotation(state, dt);
-            UpdateBlend(state, dt);
+            HandleShadingToggle(active, keyboard);
+            HandleLightToggle(active, keyboard);
+            HandleTranslation(active, keyboard);
+
+            foreach (ModelState m in state.Models)
+            {
+                if (m.Mesh != null)
+                {
+                    UpdateRotation(m, dt);
+                    UpdateBlend(m, dt);
+                }
+            }
+
+            return switched;
         }
 
-        /* ── LMB events — object rotation ───────────────────────────────── */
+        /* ── LMB events — rotate active model ───────────────────────────── */
 
         public static void OnMouseDown(AppState state, float mouseX, float mouseY)
         {
-            state.IsDragging   = true;
-            state.MouseLastPos = new Vec2(mouseX, mouseY);
+            ModelState active = state.Models[state.ActiveModel];
+            active.IsDragging   = true;
+            active.MouseLastPos = new Vec2(mouseX, mouseY);
         }
 
         public static void OnMouseMove(AppState state, float mouseX, float mouseY)
         {
-            if (!state.IsDragging)
+            ModelState active = state.Models[state.ActiveModel];
+
+            if (!active.IsDragging)
             {
                 return;
             }
 
             Vec2  current = new Vec2(mouseX, mouseY);
-            float dx      = current.X - state.MouseLastPos.X;
-            float dy      = current.Y - state.MouseLastPos.Y;
+            float dx      = current.X - active.MouseLastPos.X;
+            float dy      = current.Y - active.MouseLastPos.Y;
 
-            state.ManualRotY   += dx * DragSens;
-            state.ManualRotX   += dy * DragSens;
-            state.MouseLastPos  = current;
+            active.ManualRotY   += dx * DragSens;
+            active.ManualRotX   += dy * DragSens;
+            active.MouseLastPos  = current;
         }
 
         public static void OnMouseUp(AppState state)
         {
-            state.IsDragging = false;
+            state.Models[state.ActiveModel].IsDragging = false;
         }
 
-        /* ── RMB events — light follows mouse directly ───────────────────── */
+        /* ── RMB events — move light ─────────────────────────────────────── */
 
         public static void OnRmbDown(AppState state)
         {
@@ -87,12 +105,12 @@ namespace Scop
                 return;
             }
 
-            /* ── Convert mouse pixel → NDC ───────────────────────────────── */
+            /* ── Convert mouse pixel to NDC ──────────────────────────────── */
 
             float ndcX =  (mouseX / viewportWidth)  * 2f - 1f;
-            float ndcY = -(mouseY / viewportHeight)  * 2f + 1f;   // flip Y
+            float ndcY = -(mouseY / viewportHeight)  * 2f + 1f;
 
-            /* ── Unproject NDC → world space at LightPos.Z depth ─────────── */
+            /* ── Unproject to world space at LightPos.Z depth ────────────── */
 
             float depth = state.CameraZ - state.LightPos.Z;
             float halfY = depth * MathF.Tan(FovY * 0.5f);
@@ -100,8 +118,6 @@ namespace Scop
 
             state.LightPos.X = ndcX * halfX;
             state.LightPos.Y = ndcY * halfY;
-
-            /* ── Clamp to frustum — prevent sphere leaving screen ────────── */
 
             ClampLightXY(state);
         }
@@ -119,7 +135,7 @@ namespace Scop
             {
                 state.LightPos.Z -= offsetY * LightDragZ;
                 ClampLightZ(state);
-                ClampLightXY(state);  // re-clamp XY as depth changed
+                ClampLightXY(state);
             }
             else
             {
@@ -130,28 +146,40 @@ namespace Scop
 
         /* ── Private helpers ─────────────────────────────────────────────── */
 
-        private static void HandleTextureToggle(AppState state, KeyboardState keyboard)
+        // Returns true if model was switched.
+        private static bool HandleModelSwitch(AppState state, KeyboardState keyboard)
+        {
+            if (state.DualMode && keyboard.IsKeyPressed(Keys.Tab))
+            {
+                state.ActiveModel = state.ActiveModel == 0 ? 1 : 0;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void HandleTextureToggle(ModelState m, KeyboardState keyboard)
         {
             if (keyboard.IsKeyPressed(Keys.T))
             {
-                state.TextureOn   = !state.TextureOn;
-                state.BlendTarget = state.TextureOn ? 1.0f : 0.0f;
+                m.TextureOn   = !m.TextureOn;
+                m.BlendTarget = m.TextureOn ? 1.0f : 0.0f;
             }
         }
 
-        private static void HandleWireframeToggle(AppState state, KeyboardState keyboard)
+        private static void HandleWireframeToggle(ModelState m, KeyboardState keyboard)
         {
             if (keyboard.IsKeyPressed(Keys.W))
             {
-                state.WireframeOn = !state.WireframeOn;
+                m.WireframeOn = !m.WireframeOn;
             }
         }
 
-        private static void HandleCullingToggle(AppState state, KeyboardState keyboard)
+        private static void HandleCullingToggle(ModelState m, KeyboardState keyboard)
         {
             if (keyboard.IsKeyPressed(Keys.C))
             {
-                state.CullingOn = !state.CullingOn;
+                m.CullingOn = !m.CullingOn;
             }
         }
 
@@ -163,59 +191,59 @@ namespace Scop
             }
         }
 
-        private static void HandleShadingToggle(AppState state, KeyboardState keyboard)
+        private static void HandleShadingToggle(ModelState m, KeyboardState keyboard)
         {
             if (keyboard.IsKeyPressed(Keys.S))
             {
-                state.FlatShading = !state.FlatShading;
+                m.FlatShading = !m.FlatShading;
             }
         }
 
-        private static void HandleLightToggle(AppState state, KeyboardState keyboard)
+        private static void HandleLightToggle(ModelState m, KeyboardState keyboard)
         {
             if (keyboard.IsKeyPressed(Keys.L))
             {
-                state.LightOn = !state.LightOn;
+                m.LightOn = !m.LightOn;
             }
         }
 
-        private static void HandleTranslation(AppState state, KeyboardState keyboard)
+        private static void HandleTranslation(ModelState m, KeyboardState keyboard)
         {
-            if (keyboard.IsKeyDown(Keys.Left))  { state.Position.X -= MoveStep; }
-            if (keyboard.IsKeyDown(Keys.Right)) { state.Position.X += MoveStep; }
-            if (keyboard.IsKeyDown(Keys.Up))    { state.Position.Y += MoveStep; }
-            if (keyboard.IsKeyDown(Keys.Down))  { state.Position.Y -= MoveStep; }
-            if (keyboard.IsKeyDown(Keys.Q))     { state.Position.Z += MoveStep; }
-            if (keyboard.IsKeyDown(Keys.E))     { state.Position.Z -= MoveStep; }
+            if (keyboard.IsKeyDown(Keys.Left))  { m.Position.X -= MoveStep; }
+            if (keyboard.IsKeyDown(Keys.Right)) { m.Position.X += MoveStep; }
+            if (keyboard.IsKeyDown(Keys.Up))    { m.Position.Y += MoveStep; }
+            if (keyboard.IsKeyDown(Keys.Down))  { m.Position.Y -= MoveStep; }
+            if (keyboard.IsKeyDown(Keys.Q))     { m.Position.Z += MoveStep; }
+            if (keyboard.IsKeyDown(Keys.E))     { m.Position.Z -= MoveStep; }
         }
 
-        private static void UpdateRotation(AppState state, float dt)
+        private static void UpdateRotation(ModelState m, float dt)
         {
-            if (!state.IsDragging)
+            if (!m.IsDragging)
             {
-                state.RotAngle += RotSpeed * dt;
+                m.RotAngle += RotSpeed * dt;
 
-                if (state.RotAngle > 2f * MathF.PI)
+                if (m.RotAngle > 2f * MathF.PI)
                 {
-                    state.RotAngle -= 2f * MathF.PI;
+                    m.RotAngle -= 2f * MathF.PI;
                 }
             }
         }
 
-        private static void UpdateBlend(AppState state, float dt)
+        private static void UpdateBlend(ModelState m, float dt)
         {
-            if (state.BlendFactor < state.BlendTarget)
+            if (m.BlendFactor < m.BlendTarget)
             {
-                state.BlendFactor = MathF.Min(
-                    state.BlendFactor + BlendSpeed * dt,
-                    state.BlendTarget
+                m.BlendFactor = MathF.Min(
+                    m.BlendFactor + BlendSpeed * dt,
+                    m.BlendTarget
                 );
             }
-            else if (state.BlendFactor > state.BlendTarget)
+            else if (m.BlendFactor > m.BlendTarget)
             {
-                state.BlendFactor = MathF.Max(
-                    state.BlendFactor - BlendSpeed * dt,
-                    state.BlendTarget
+                m.BlendFactor = MathF.Max(
+                    m.BlendFactor - BlendSpeed * dt,
+                    m.BlendTarget
                 );
             }
         }
@@ -224,8 +252,8 @@ namespace Scop
 
         private static void ClampLightZ(AppState state)
         {
-            float lightZMax  = state.CameraZ - 0.2f;
-            state.LightPos.Z = MathF.Max(0.2f, MathF.Min(lightZMax, state.LightPos.Z));
+            float lightZMax      = state.CameraZ - 0.2f;
+            state.LightPos.Z     = MathF.Max(0.2f, MathF.Min(lightZMax, state.LightPos.Z));
         }
 
         private static void ClampLightXY(AppState state)

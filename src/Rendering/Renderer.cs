@@ -5,14 +5,14 @@ using Scop.Rendering;
 
 namespace Scop
 {
-    // Builds MVP matrices, uploads uniforms, executes draw call.
+    // Builds MVP matrices, uploads uniforms, executes draw calls.
     // No input logic. No state of its own.
 
     public static class Renderer
     {
         /* ── Constants ───────────────────────────────────────────────────── */
 
-        private const float FovY      = MathF.PI / 4f;   // 45 degrees
+        private const float FovY      = MathF.PI / 4f;
         private const float NearPlane = 0.1f;
         private const float FarPlane  = 100f;
 
@@ -20,21 +20,33 @@ namespace Scop
 
         public static void Draw(AppState state, int viewportWidth, int viewportHeight)
         {
-            if (state.Shader == null || state.Mesh == null || state.Texture == null)
+            if (state.Shader == null)
             {
                 return;
             }
 
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
+            if (state.DualMode)
+            {
+                DrawDual(state, viewportWidth, viewportHeight);
+            }
+            else
+            {
+                DrawSingle(state, viewportWidth, viewportHeight);
+            }
+        }
+
+        /* ── Single mode ─────────────────────────────────────────────────── */
+
+        private static void DrawSingle(AppState state, int width, int height)
+        {
+            GL.Viewport(0, 0, width, height);
+
             Mat4 view = BuildView(state);
-            Mat4 proj = BuildProjection(viewportWidth, viewportHeight);
+            Mat4 proj = BuildProjection(width, height);
 
-            /* ── Pass 1 — main mesh ──────────────────────────────────────── */
-
-            DrawMesh(state, view, proj);
-
-            /* ── Pass 2 — light sphere (only while RMB is held) ─────────── */
+            DrawModel(state, state.Models[0], view, proj);
 
             if (state.IsRmbDragging && state.LightSphere != null)
             {
@@ -42,14 +54,62 @@ namespace Scop
             }
         }
 
-        /* ── Pass 1 ──────────────────────────────────────────────────────── */
+        /* ── Dual mode ───────────────────────────────────────────────────── */
 
-        private static void DrawMesh(AppState state, Mat4 view, Mat4 proj)
+        private static void DrawDual(AppState state, int width, int height)
         {
+            int halfW = width / 2;
+
+            /* ── Left viewport — model A ─────────────────────────────────── */
+
+            GL.Viewport(0, 0, halfW, height);
+
+            Mat4 viewA = BuildView(state);
+            Mat4 projA = BuildProjection(halfW, height);
+
+            DrawModel(state, state.Models[0], viewA, projA);
+
+            if (state.IsRmbDragging && state.LightSphere != null)
+            {
+                DrawLightSphere(state, viewA, projA);
+            }
+
+            /* ── Right viewport — model B ────────────────────────────────── */
+
+            GL.Viewport(halfW, 0, halfW, height);
+
+            Mat4 viewB = BuildView(state);
+            Mat4 projB = BuildProjection(halfW, height);
+
+            DrawModel(state, state.Models[1], viewB, projB);
+
+            if (state.IsRmbDragging && state.LightSphere != null)
+            {
+                DrawLightSphere(state, viewB, projB);
+            }
+
+            /* ── Restore full viewport for screenshot / UI ───────────────── */
+
+            GL.Viewport(0, 0, width, height);
+        }
+
+        /* ── Draw one model ──────────────────────────────────────────────── */
+
+        private static void DrawModel(
+            AppState  state,
+            ModelState m,
+            Mat4      view,
+            Mat4      proj)
+        {
+            if (m.Mesh == null || m.Texture == null)
+            {
+                return;
+            }
+
             state.Shader.Use();
 
-            Mat4  model = BuildModel(state);
-            float blend = state.WireframeOn ? 0f : state.BlendFactor;
+            Mat4  model = BuildModelMatrix(m);
+            float blend = m.WireframeOn ? 0f : m.BlendFactor;
             Vec3  eye   = new Vec3(0f, 0f, state.CameraZ);
 
             state.Shader.SetMat4("u_model",            model);
@@ -57,41 +117,41 @@ namespace Scop
             state.Shader.SetMat4("u_projection",       proj);
             state.Shader.SetFloat("u_blendFactor",     blend);
             state.Shader.SetInt("u_texture",            0);
-            state.Shader.SetInt("u_flatShading",        state.FlatShading ? 1 : 0);
-            state.Shader.SetInt("u_lightOn",            state.LightOn ? 1 : 0);
+            state.Shader.SetInt("u_flatShading",        m.FlatShading ? 1 : 0);
+            state.Shader.SetInt("u_lightOn",            m.LightOn ? 1 : 0);
             state.Shader.SetVec3("u_lightPos",          state.LightPos);
-            state.Shader.SetVec3("u_lightColor",        state.LightColor);
-            state.Shader.SetFloat("u_ambientStrength",  state.AmbientStrength);
-            state.Shader.SetFloat("u_shininess",        state.Shininess);
+            state.Shader.SetVec3("u_lightColor",        m.LightColor);
+            state.Shader.SetFloat("u_ambientStrength",  m.AmbientStrength);
+            state.Shader.SetFloat("u_shininess",        m.Shininess);
             state.Shader.SetVec3("u_viewPos",           eye);
 
-            if (state.CullingOn)
+            if (m.CullingOn)
             {
                 GL.Enable(EnableCap.CullFace);
                 GL.CullFace(CullFaceMode.Back);
             }
 
-            if (state.WireframeOn)
+            if (m.WireframeOn)
             {
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
             }
 
-            state.Texture.Bind(0);
-            state.Mesh.Draw();
-            state.Texture.Unbind();
+            m.Texture.Bind(0);
+            m.Mesh.Draw();
+            m.Texture.Unbind();
 
-            if (state.WireframeOn)
+            if (m.WireframeOn)
             {
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
             }
 
-            if (state.CullingOn)
+            if (m.CullingOn)
             {
                 GL.Disable(EnableCap.CullFace);
             }
         }
 
-        /* ── Pass 2 ──────────────────────────────────────────────────────── */
+        /* ── Draw light sphere ───────────────────────────────────────────── */
 
         private static void DrawLightSphere(AppState state, Mat4 view, Mat4 proj)
         {
@@ -105,14 +165,10 @@ namespace Scop
             state.Shader.SetMat4("u_projection",       proj);
             state.Shader.SetFloat("u_blendFactor",     0f);
             state.Shader.SetInt("u_texture",            0);
-            state.Shader.SetInt("u_flatShading",        0);   // smooth — looks rounder
-
-            /* ── Light the sphere from the camera so it always looks 3D ─── */
-            /* ── Using camera position as light avoids self-shadowing      ─ */
-
+            state.Shader.SetInt("u_flatShading",        0);
             state.Shader.SetInt("u_lightOn",            1);
             state.Shader.SetVec3("u_lightPos",          eye);
-            state.Shader.SetVec3("u_lightColor",        state.LightColor);
+            state.Shader.SetVec3("u_lightColor",        Vec3.One);
             state.Shader.SetFloat("u_ambientStrength",  0.3f);
             state.Shader.SetFloat("u_shininess",        64f);
             state.Shader.SetVec3("u_viewPos",           eye);
@@ -122,11 +178,11 @@ namespace Scop
 
         /* ── Matrix builders ─────────────────────────────────────────────── */
 
-        private static Mat4 BuildModel(AppState state)
+        private static Mat4 BuildModelMatrix(ModelState m)
         {
-            return Mat4.Translate(state.Position)
-                 * Mat4.RotateY(state.RotAngle + state.ManualRotY)
-                 * Mat4.RotateX(state.ManualRotX);
+            return Mat4.Translate(m.Position)
+                 * Mat4.RotateY(m.RotAngle + m.ManualRotY)
+                 * Mat4.RotateX(m.ManualRotX);
         }
 
         private static Mat4 BuildView(AppState state)

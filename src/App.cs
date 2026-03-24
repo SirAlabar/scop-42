@@ -3,12 +3,11 @@ using OpenTK.Graphics.OpenGL4;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
-using Scop.Math;
 using Scop.Parsing;
 using Scop.Parsing.Triangulation;
 using Scop.Parsing.UvMapping;
+using Scop.Math;
 using Scop.Rendering;
-using Scop.Rendering.Interfaces;
 
 namespace Scop
 {
@@ -19,13 +18,19 @@ namespace Scop
     {
         /* ── Fields ──────────────────────────────────────────────────────── */
 
-        private readonly string     _objPath;
-        private readonly string     _texPath;
-        private          AppState   _state = null!;
+        private readonly string   _objPathA;
+        private readonly string   _texPathA;
+        private readonly string   _objPathB;
+        private readonly string   _texPathB;
+        private          AppState _state = null!;
 
         /* ── Constructor ─────────────────────────────────────────────────── */
 
-        public App(string objPath, string texPath)
+        public App(
+            string objPathA,
+            string texPathA,
+            string objPathB,
+            string texPathB)
             : base(
                 new GameWindowSettings
                 {
@@ -42,8 +47,10 @@ namespace Scop
                 }
             )
         {
-            _objPath = objPath;
-            _texPath = texPath;
+            _objPathA = objPathA;
+            _texPathA = texPathA;
+            _objPathB = objPathB;
+            _texPathB = texPathB;
         }
 
         /* ── OnLoad ──────────────────────────────────────────────────────── */
@@ -63,8 +70,15 @@ namespace Scop
             _state = new AppState();
 
             LoadShader();
-            LoadMesh();
-            LoadTexture();
+            LoadModel(0, _objPathA, _texPathA);
+
+            if (!string.IsNullOrEmpty(_objPathB))
+            {
+                LoadModel(1, _objPathB, _texPathB);
+                _state.DualMode = true;
+                UpdateTitle();
+            }
+
             LoadLightSphere();
         }
 
@@ -80,7 +94,14 @@ namespace Scop
                 return;
             }
 
-            InputHandler.Update(_state, KeyboardState, (float)args.Time);
+            bool switchedModel = InputHandler.Update(
+                _state, KeyboardState, (float)args.Time
+            );
+
+            if (switchedModel)
+            {
+                UpdateTitle();
+            }
         }
 
         /* ── OnRenderFrame ───────────────────────────────────────────────── */
@@ -90,8 +111,6 @@ namespace Scop
             base.OnRenderFrame(args);
 
             Renderer.Draw(_state, Size.X, Size.Y);
-
-            /* ── Bonus 4 — screenshot captured before swap ───────────────── */
 
             if (_state.ScreenshotRequested)
             {
@@ -110,7 +129,7 @@ namespace Scop
             GL.Viewport(0, 0, e.Width, e.Height);
         }
 
-        /* ── Mouse events — forwarded to InputHandler ────────────────────── */
+        /* ── Mouse events ────────────────────────────────────────────────── */
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
@@ -150,7 +169,6 @@ namespace Scop
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
             base.OnMouseWheel(e);
-
             bool rmbHeld = MouseState.IsButtonDown(MouseButton.Right);
             InputHandler.OnMouseWheel(_state, e.OffsetY, rmbHeld);
         }
@@ -161,14 +179,18 @@ namespace Scop
         {
             base.OnUnload();
 
-            _state.Mesh?.Dispose();
+            foreach (ModelState m in _state.Models)
+            {
+                m.Mesh?.Dispose();
+
+                if (m.Texture is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
+
             _state.Shader?.Dispose();
             _state.LightSphere?.Dispose();
-
-            if (_state.Texture is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
         }
 
         /* ── Load helpers ────────────────────────────────────────────────── */
@@ -183,37 +205,49 @@ namespace Scop
             }
         }
 
-        private void LoadMesh()
+        private void LoadModel(int index, string objPath, string texPath)
         {
             ObjMesh meshData = ObjParser.Parse(
-                _objPath,
+                objPath,
                 new FanTriangulator(),
                 new BoxUvMapper()
             );
 
             if (meshData.Vertices.Count == 0)
             {
-                throw new Exception($"App: no geometry in '{_objPath}'");
+                throw new Exception($"App: no geometry in '{objPath}'");
             }
 
-            _state.Mesh = new Mesh();
-            _state.Mesh.Upload(meshData);
-        }
+            _state.Models[index].Mesh = new Mesh();
+            _state.Models[index].Mesh.Upload(meshData);
 
-        private void LoadTexture()
-        {
-            _state.Texture = Texture.FromFile(_texPath);
+            _state.Models[index].Texture = Texture.FromFile(texPath);
 
-            if (!_state.Texture.IsLoaded)
+            if (!_state.Models[index].Texture.IsLoaded)
             {
-                Console.WriteLine("App: texture unavailable — colour-only mode");
+                Console.WriteLine($"App: model {index} texture unavailable — colour-only mode");
             }
         }
 
         private void LoadLightSphere()
         {
             _state.LightSphere = new LightSphere();
-            _state.LightSphere.Upload(_state.LightColor);
+            _state.LightSphere.Upload(Vec3.One);
+        }
+
+        /* ── UI helpers ──────────────────────────────────────────────────── */
+
+        private void UpdateTitle()
+        {
+            if (_state.DualMode)
+            {
+                string label = _state.ActiveModel == 0 ? "A" : "B";
+                Title = $"SCOP - 42  [{label}]";
+            }
+            else
+            {
+                Title = "SCOP - 42";
+            }
         }
     }
 }
