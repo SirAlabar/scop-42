@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Scop
 {
@@ -14,53 +15,56 @@ namespace Scop
                 return 1;
             }
 
+            /* ── Strip flags from positional arguments ───────────────────── */
+
+            bool         bonusMode  = false;
+            List<string> positional = new List<string>();
+
+            foreach (string arg in args)
+            {
+                if (arg == "--bonus")
+                {
+                    bonusMode = true;
+                }
+                else
+                {
+                    positional.Add(arg);
+                }
+            }
+
             /* ── Single mode: scop model.obj [texture] ───────────────────── */
 
-            if (args.Length <= 2)
+            if (positional.Count <= 2)
             {
-                string objPath = args[0];
-                string texPath = args.Length == 2 ? args[1] : string.Empty;
+                string objPath = positional[0];
+                string texPath = positional.Count == 2 ? positional[1] : string.Empty;
 
-                return RunSingle(objPath, texPath);
+                return Run(objPath, texPath, string.Empty, string.Empty, bonusMode);
             }
 
             /* ── Dual mode: scop model1.obj tex1 model2.obj tex2 ─────────── */
 
-            if (args.Length == 4)
+            if (positional.Count == 4)
             {
-                return RunDual(args[0], args[1], args[2], args[3]);
+                return Run(positional[0], positional[1], positional[2], positional[3], bonusMode);
             }
 
             PrintUsage();
             return 1;
         }
 
-        /* ── Run helpers ─────────────────────────────────────────────────── */
+        /* ── Run helper ──────────────────────────────────────────────────── */
 
-        private static int RunSingle(string objPath, string texPath)
-        {
-            try
-            {
-                using App app = new App(objPath, texPath, string.Empty, string.Empty);
-                app.Run();
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Fatal: {ex.Message}");
-                return 1;
-            }
-        }
-
-        private static int RunDual(
+        private static int Run(
             string objPathA,
             string texPathA,
             string objPathB,
-            string texPathB)
+            string texPathB,
+            bool   bonusMode)
         {
             try
             {
-                using App app = new App(objPathA, texPathA, objPathB, texPathB);
+                using App app = new App(objPathA, texPathA, objPathB, texPathB, bonusMode);
                 app.Run();
                 return 0;
             }
@@ -76,11 +80,14 @@ namespace Scop
         private static void PrintUsage()
         {
             Console.Error.WriteLine(
-                "Usage: scop <model.obj> [texture]                         (single mode)"
+                "Usage: scop <model.obj> [texture] [--bonus]"
             );
             Console.Error.WriteLine(
-                "       scop <model1.obj> <tex1> <model2.obj> <tex2>       (dual mode)"
+                "       scop <model1.obj> <tex1> <model2.obj> <tex2> [--bonus]"
             );
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Flags:");
+            Console.Error.WriteLine("  --bonus     ear-clipping triangulation + face-normal UV mapping");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Controls:");
             Console.Error.WriteLine("  Arrow keys  -- translate on X / Y");

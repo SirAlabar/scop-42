@@ -3,10 +3,11 @@ using OpenTK.Graphics.OpenGL4;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using Scop.Math;
 using Scop.Parsing;
+using Scop.Parsing.Interfaces;
 using Scop.Parsing.Triangulation;
 using Scop.Parsing.UvMapping;
-using Scop.Math;
 using Scop.Rendering;
 
 namespace Scop
@@ -22,6 +23,7 @@ namespace Scop
         private readonly string   _texPathA;
         private readonly string   _objPathB;
         private readonly string   _texPathB;
+        private readonly bool     _bonusMode;
         private          AppState _state = null!;
 
         /* ── Constructor ─────────────────────────────────────────────────── */
@@ -30,7 +32,8 @@ namespace Scop
             string objPathA,
             string texPathA,
             string objPathB,
-            string texPathB)
+            string texPathB,
+            bool   bonusMode)
             : base(
                 new GameWindowSettings
                 {
@@ -47,10 +50,11 @@ namespace Scop
                 }
             )
         {
-            _objPathA = objPathA;
-            _texPathA = texPathA;
-            _objPathB = objPathB;
-            _texPathB = texPathB;
+            _objPathA  = objPathA;
+            _texPathA  = texPathA;
+            _objPathB  = objPathB;
+            _texPathB  = texPathB;
+            _bonusMode = bonusMode;
         }
 
         /* ── OnLoad ──────────────────────────────────────────────────────── */
@@ -66,6 +70,15 @@ namespace Scop
                 $"App: OpenGL {GL.GetString(StringName.Version)}" +
                 $" / GLSL {GL.GetString(StringName.ShadingLanguageVersion)}"
             );
+
+            if (_bonusMode)
+            {
+                Console.WriteLine("App: bonus mode — EarClipper + FaceNormalUvMapper");
+            }
+            else
+            {
+                Console.WriteLine("App: standard mode — FanTriangulator + BoxUvMapper");
+            }
 
             _state = new AppState();
 
@@ -207,11 +220,23 @@ namespace Scop
 
         private void LoadModel(int index, string objPath, string texPath)
         {
-            ObjMesh meshData = ObjParser.Parse(
-                objPath,
-                new FanTriangulator(),
-                new BoxUvMapper()
-            );
+            /* ── Strategy selection based on --bonus flag ────────────────── */
+
+            ITriangulator triangulator;
+            IUvMapper     uvMapper;
+
+            if (_bonusMode)
+            {
+                triangulator = new EarClipper();
+                uvMapper     = new FaceNormalUvMapper();
+            }
+            else
+            {
+                triangulator = new FanTriangulator();
+                uvMapper     = new BoxUvMapper();
+            }
+
+            ObjMesh meshData = ObjParser.Parse(objPath, triangulator, uvMapper);
 
             if (meshData.Vertices.Count == 0)
             {
